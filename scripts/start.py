@@ -9,8 +9,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def run(path):
-    return subprocess.call([sys.executable, path], cwd=ROOT)
+def run_script(rel_path: str):
+    return subprocess.call([sys.executable, os.path.join(ROOT, rel_path)], cwd=ROOT)
 
 
 def main():
@@ -27,20 +27,19 @@ def main():
     print("0) Exit")
     choice = input("Choose: ").strip()
 
-    mapping = {
-        "1": ["-m", "pytest", "tests/", "-q"],
-        "2": ["scripts/run_paper.py"],
-        "3": ["scripts/run_research.py"],
-        "4": ["scripts/run_walk_forward.py"],
-        "5": ["scripts/setup_binance_testnet.py"],
-        "6": ["scripts/run_testnet.py"],
-    }
     if choice == "0":
         return
     if choice == "1":
         sys.exit(subprocess.call([sys.executable, "-m", "pytest", "tests/", "-q"], cwd=ROOT))
-    if choice in mapping and choice != "1":
-        sys.exit(run(os.path.join(ROOT, mapping[choice][0]) if mapping[choice][0].endswith(".py") else mapping[choice][0]))
+    paths = {
+        "2": "scripts/run_paper.py",
+        "3": "scripts/run_research.py",
+        "4": "scripts/run_walk_forward.py",
+        "5": "scripts/setup_binance_testnet.py",
+        "6": "scripts/run_testnet.py",
+    }
+    if choice in paths:
+        sys.exit(run_script(paths[choice]))
     print("Unknown choice")
 
 
