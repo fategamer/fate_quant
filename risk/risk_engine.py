@@ -25,13 +25,14 @@ class PositionSizeResult:
 
 
 class RiskEngine:
-    def __init__(self, equity: float):
+    def __init__(self, equity: float, research_mode: bool = False):
         self.equity = equity
         self.peak_equity = equity
         self.daily_pnl = 0.0
         self.consecutive_losses = 0
         self.is_locked = False
         self.lock_reason: Optional[str] = None
+        self.research_mode = research_mode   # When True, allows simulated trades
 
     def update_equity(self, new_equity: float, trade_pnl: float = 0.0):
         self.equity = new_equity
@@ -79,7 +80,8 @@ class RiskEngine:
         self.lock_reason = reason
 
     def can_open_trade(self) -> tuple[bool, str]:
-        if not ALLOW_LIVE_TRADING:
+        # Research mode is allowed to simulate trades
+        if not self.research_mode and not ALLOW_LIVE_TRADING:
             return False, "Live trading disabled by constitution"
         if self.is_locked:
             return False, f"System locked: {self.lock_reason}"

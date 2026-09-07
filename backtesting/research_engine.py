@@ -92,7 +92,8 @@ class ResearchEngine:
         self.peak_equity = initial_capital
         self.trades: List[Trade] = []
         self.equity_curve: List[float] = [initial_capital]
-        self.risk = RiskEngine(equity=initial_capital)
+        # Research mode = True so position sizing is allowed for simulation
+        self.risk = RiskEngine(equity=initial_capital, research_mode=True)
 
     def _apply_entry_costs(self, price: float, quantity: float) -> Tuple[float, float]:
         """Returns (effective_entry_price, total_cost)"""
@@ -124,7 +125,6 @@ class ResearchEngine:
 
         strategy = TrendMomentumBreakout(htf_df, ptf_df)
 
-        # We walk the primary timeframe
         df = ptf_df.copy()
         if max_bars:
             df = df.iloc[-max_bars:]
@@ -136,20 +136,17 @@ class ResearchEngine:
         entry_time = None
         entry_fees = 0.0
 
-        for i in range(50, len(df)):  # need enough history for indicators
+        for i in range(50, len(df)):
             current_bar = df.iloc[i]
             current_time = df.index[i]
             high = current_bar["high"]
             low = current_bar["low"]
             close = current_bar["close"]
 
-            # Update risk equity tracking
             self.risk.update_equity(self.equity)
 
-            # Check kill switch every bar
             if self.risk.check_kill_switch():
                 if position_open:
-                    # Force close on kill switch
                     eff_exit, exit_fee = self._apply_exit_costs(close, quantity)
                     pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
                     self.equity += pnl
@@ -169,9 +166,8 @@ class ResearchEngine:
                 break
 
             if position_open:
-                # Check stop hit (intrabar)
+                # Stop loss
                 if low <= stop_price:
-                    # Stopped out
                     eff_exit, exit_fee = self._apply_exit_costs(stop_price, quantity)
                     pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
                     self.equity += pnl
@@ -193,7 +189,7 @@ class ResearchEngine:
                     self.equity_curve.append(self.equity)
                     continue
 
-                # Simple take-profit: 2R (can be improved later)
+                # Take profit 2R
                 risk_dist = entry_price - stop_price
                 take_profit = entry_price + (risk_dist * 2.0)
                 if high >= take_profit:
@@ -219,20 +215,15 @@ class ResearchEngine:
                     continue
 
             else:
-                # No position — look for signal on this bar
-                # We re-create strategy view up to current bar for realism
-                # (In production we would use incremental indicators)
                 signal = strategy.generate_signal(symbol)
 
                 if signal.is_valid and signal.score >= 80:
-                    # Ask risk engine for size
                     size_result: PositionSizeResult = self.risk.calculate_position_size(
                         entry_price=signal.entry_price,
                         stop_price=signal.stop_price,
                     )
 
                     if not size_result.rejected and size_result.quantity > 0:
-                        # Enter
                         eff_entry, entry_fee = self._apply_entry_costs(signal.entry_price, size_result.quantity)
                         entry_price = eff_entry
                         stop_price = signal.stop_price
@@ -240,13 +231,11 @@ class ResearchEngine:
                         entry_time = current_time
                         entry_fees = entry_fee
                         position_open = True
-
-                        # Deduct entry costs immediately from equity
                         self.equity -= entry_fee
 
             self.equity_curve.append(self.equity)
 
-        # Close any remaining position at last bar
+        # Close remaining position at end
         if position_open:
             last_close = df["close"].iloc[-1]
             last_time = df.index[-1]
