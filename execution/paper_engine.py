@@ -4,6 +4,7 @@ Live public data. Real decisions. Zero real money.
 """
 
 from typing import Dict
+from datetime import datetime, timezone
 from loguru import logger
 
 from config.settings import (
@@ -15,9 +16,11 @@ from config.settings import (
     ALLOW_LIVE_TRADING,
     SCORE_GATES,
     MAX_OPEN_POSITIONS,
+    MAX_BARS_IN_TRADE,
 )
 from data.data_handler import DataHandler
 from risk.risk_engine import RiskEngine
+from risk.session import DailySession
 from strategies.trend_momentum_breakout import TrendMomentumBreakout
 from execution.paper_broker import PaperBroker
 from portfolio.paper_portfolio import PaperPortfolio
@@ -32,36 +35,42 @@ class PaperEngine:
         self.broker = PaperBroker()
         self.portfolio = PaperPortfolio(starting_cash=paper_capital)
         self.risk = RiskEngine(equity=paper_capital, research_mode=True)
+        self.session = DailySession(self.risk)
         self.alerts = AlertBus()
         self.journal = TradeJournal("paper_trades.csv")
         self.last_prices: Dict[str, float] = {}
 
         if ALLOW_LIVE_TRADING:
             raise RuntimeError("Paper engine must not run with live trading enabled.")
-
-        logger.info(f"Paper engine started. Capital: {paper_capital:.2f} | Live trading: OFF")
+        logger.info(f"Paper engine started. Capital: {paper_capital:.2f}")
 
     def _refresh_equity(self):
         equity = self.portfolio.mark_to_market(self.last_prices)
         self.risk.update_equity(equity)
         return equity
 
+    def _close_position(self, symbol: str, price: float, reason: str):
+        pos = self.portfolio.positions.get(symbol)
+        if not pos:
+            return
+        fill = self.broker.sell(symbol, pos.quantity, price, reason)
+        trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, reason)
+        if trade:
+            self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
+            self.journal.write("CLOSE", {
+                "symbol": symbol, "side": "sell", "quantity": trade.quantity,
+                "price": trade.exit_price, "pnl": trade.pnl, "reason": reason,
+            })
+            self.alerts.notify(f"CLOSED {symbol} | PnL {trade.pnl:.2f} | {reason}")
+
     def _close_all(self, reason: str):
         for symbol in list(self.portfolio.positions.keys()):
             price = self.last_prices.get(symbol)
-            if not price:
-                continue
-            fill = self.broker.sell(symbol, self.portfolio.positions[symbol].quantity, price, reason)
-            trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, reason)
-            if trade:
-                self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
-                self.journal.write("CLOSE", {
-                    "symbol": symbol, "side": "sell", "quantity": trade.quantity,
-                    "price": trade.exit_price, "pnl": trade.pnl, "reason": reason,
-                })
-                self.alerts.notify(f"CLOSED {symbol} | PnL {trade.pnl:.2f} | {reason}")
+            if price:
+                self._close_position(symbol, price, reason)
 
     def scan_symbol(self, symbol: str):
+        self.session.roll()
         if self.risk.check_kill_switch():
             self.alerts.notify(f"KILL SWITCH: {self.risk.lock_reason}")
             self._close_all("Kill Switch")
@@ -80,28 +89,13 @@ class PaperEngine:
 
         if self.portfolio.has_position(symbol):
             pos = self.portfolio.positions[symbol]
+            hours_held = (datetime.now(timezone.utc) - pos.entry_time).total_seconds() / 3600
             if low <= pos.stop_price:
-                fill = self.broker.sell(symbol, pos.quantity, pos.stop_price, "Stop Loss")
-                trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, "Stop Loss")
-                if trade:
-                    self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
-                    self.journal.write("CLOSE", {
-                        "symbol": symbol, "side": "sell", "quantity": trade.quantity,
-                        "price": trade.exit_price, "pnl": trade.pnl, "reason": "Stop Loss",
-                    })
-                    self.alerts.notify(f"STOP {symbol} | PnL {trade.pnl:.2f}")
-                return
-            if high >= pos.take_profit:
-                fill = self.broker.sell(symbol, pos.quantity, pos.take_profit, "Take Profit 2R")
-                trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, "Take Profit 2R")
-                if trade:
-                    self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
-                    self.journal.write("CLOSE", {
-                        "symbol": symbol, "side": "sell", "quantity": trade.quantity,
-                        "price": trade.exit_price, "pnl": trade.pnl, "reason": "Take Profit 2R",
-                    })
-                    self.alerts.notify(f"TP {symbol} | PnL {trade.pnl:.2f}")
-                return
+                self._close_position(symbol, pos.stop_price, "Stop Loss")
+            elif high >= pos.take_profit:
+                self._close_position(symbol, pos.take_profit, "Take Profit 2R")
+            elif hours_held >= MAX_BARS_IN_TRADE:
+                self._close_position(symbol, last, "Time Stop")
             return
 
         if self.portfolio.open_count() >= MAX_OPEN_POSITIONS:
@@ -109,21 +103,17 @@ class PaperEngine:
 
         can_trade, reason = self.risk.can_open_trade()
         if not can_trade:
-            logger.debug(f"No new trade {symbol}: {reason}")
             return
 
         signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
         if not signal.is_valid or signal.score < SCORE_GATES["valid_min"]:
-            logger.debug(f"NO TRADE {symbol}: {signal.reason} score={signal.score:.1f}")
             return
 
         size = self.risk.calculate_position_size(signal.entry_price, signal.stop_price)
         if size.rejected or size.quantity <= 0:
-            logger.info(f"SIZE REJECTED {symbol}: {size.reason}")
             return
 
-        risk_dist = abs(signal.entry_price - signal.stop_price)
-        take_profit = signal.entry_price + (risk_dist * 2.0)
+        take_profit = signal.entry_price + abs(signal.entry_price - signal.stop_price) * 2.0
         fill = self.broker.buy(symbol, size.quantity, signal.entry_price, signal.reason)
         opened = self.portfolio.open_long(
             symbol=symbol,
@@ -134,7 +124,7 @@ class PaperEngine:
             fee=fill.fee,
         )
         if not opened:
-            self.alerts.notify(f"OPEN FAILED {symbol} — insufficient paper cash")
+            self.alerts.notify(f"OPEN FAILED {symbol}")
             return
 
         self._refresh_equity()
@@ -145,7 +135,7 @@ class PaperEngine:
         })
         self.alerts.notify(
             f"PAPER OPEN {symbol} qty={size.quantity:.6f} entry={fill.fill_price:.4f} "
-            f"stop={signal.stop_price:.4f} tp={take_profit:.4f} score={signal.score:.1f}"
+            f"score={signal.score:.1f}"
         )
 
     def run_once(self):
@@ -156,10 +146,6 @@ class PaperEngine:
             except Exception as e:
                 self.alerts.notify(f"ERROR {symbol}: {e}")
         equity = self._refresh_equity()
-        logger.info(
-            f"Equity={equity:.2f} Cash={self.portfolio.cash:.2f} "
-            f"Open={self.portfolio.open_count()} Closed={len(self.portfolio.closed)}"
-        )
         return {
             "equity": equity,
             "cash": self.portfolio.cash,
