@@ -37,16 +37,16 @@ class TrendMomentumBreakout:
         self._prepare()
 
     def _prepare(self):
-        # Simple moving averages for trend
+        # Higher timeframe trend
         self.htf["sma_50"] = self.htf["close"].rolling(50).mean()
         self.htf["sma_200"] = self.htf["close"].rolling(200).mean()
 
-        # Momentum
+        # Primary timeframe
         self.ptf["roc_10"] = self.ptf["close"].pct_change(10)
         self.ptf["sma_20"] = self.ptf["close"].rolling(20).mean()
         self.ptf["sma_50"] = self.ptf["close"].rolling(50).mean()
 
-        # Volatility (ATR proxy)
+        # ATR
         self.ptf["tr"] = np.maximum(
             self.ptf["high"] - self.ptf["low"],
             np.maximum(
@@ -59,59 +59,81 @@ class TrendMomentumBreakout:
         # Volume
         self.ptf["vol_sma_20"] = self.ptf["volume"].rolling(20).mean()
 
+        # Simple structure
+        self.ptf["recent_high_20"] = self.ptf["high"].rolling(20).max().shift(1)
+
     def generate_signal(self, symbol: str) -> SignalResult:
         """
         Returns a SignalResult. is_valid=True only if all conditions pass.
         """
-        if len(self.htf) < 200 or len(self.ptf) < 50:
-            return SignalResult(symbol, "long", 0, 0, 0, "Insufficient data", False)
+        if len(self.htf) < 210 or len(self.ptf) < 60:
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Insufficient data", False)
 
         # 1. Higher-timeframe trend must be bullish
-        htf_bullish = (
-            self.htf["close"].iloc[-1] > self.htf["sma_50"].iloc[-1]
-            and self.htf["sma_50"].iloc[-1] > self.htf["sma_200"].iloc[-1]
-        )
+        htf_close = self.htf["close"].iloc[-1]
+        htf_sma50 = self.htf["sma_50"].iloc[-1]
+        htf_sma200 = self.htf["sma_200"].iloc[-1]
+
+        if pd.isna(htf_sma50) or pd.isna(htf_sma200):
+            return SignalResult(symbol, "long", 0, 0, 0.0, "HTF indicators not ready", False)
+
+        htf_bullish = htf_close > htf_sma50 and htf_sma50 > htf_sma200
         if not htf_bullish:
-            return SignalResult(symbol, "long", 0, 0, 0, "HTF trend not bullish", False)
+            return SignalResult(symbol, "long", 0, 0, 0.0, "HTF trend not bullish", False)
 
         # 2. Momentum agrees
-        momentum_ok = (
-            self.ptf["roc_10"].iloc[-1] > 0
-            and self.ptf["close"].iloc[-1] > self.ptf["sma_20"].iloc[-1]
-        )
-        if not momentum_ok:
-            return SignalResult(symbol, "long", 0, 0, 0, "Momentum not aligned", False)
+        roc = self.ptf["roc_10"].iloc[-1]
+        close = self.ptf["close"].iloc[-1]
+        sma20 = self.ptf["sma_20"].iloc[-1]
 
-        # 3. Simple structure break (close above recent high)
-        lookback = 20
-        recent_high = self.ptf["high"].iloc[-lookback:-1].max()
-        structure_break = self.ptf["close"].iloc[-1] > recent_high
+        if pd.isna(roc) or pd.isna(sma20):
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Momentum indicators not ready", False)
+
+        momentum_ok = roc > 0 and close > sma20
+        if not momentum_ok:
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Momentum not aligned", False)
+
+        # 3. Structure break
+        recent_high = self.ptf["recent_high_20"].iloc[-1]
+        if pd.isna(recent_high):
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Structure not ready", False)
+
+        structure_break = close > recent_high
         if not structure_break:
-            return SignalResult(symbol, "long", 0, 0, 0, "No structure break", False)
+            return SignalResult(symbol, "long", 0, 0, 0.0, "No structure break", False)
 
         # 4. Volume confirmation
-        volume_ok = self.ptf["volume"].iloc[-1] > self.ptf["vol_sma_20"].iloc[-1] * 1.2
+        vol = self.ptf["volume"].iloc[-1]
+        vol_sma = self.ptf["vol_sma_20"].iloc[-1]
+        if pd.isna(vol_sma) or vol_sma == 0:
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Volume data invalid", False)
+
+        volume_ok = vol > vol_sma * 1.15
         if not volume_ok:
-            return SignalResult(symbol, "long", 0, 0, 0, "Volume not confirming", False)
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Volume not confirming", False)
 
-        # 5. Volatility within bounds (not too quiet, not exploding)
+        # 5. Volatility bounds
         atr = self.ptf["atr_14"].iloc[-1]
-        atr_pct = atr / self.ptf["close"].iloc[-1]
-        if atr_pct < 0.005 or atr_pct > 0.05:
-            return SignalResult(symbol, "long", 0, 0, 0, "Volatility out of bounds", False)
+        if pd.isna(atr) or atr <= 0:
+            return SignalResult(symbol, "long", 0, 0, 0.0, "ATR invalid", False)
 
-        # Entry and stop
-        entry = self.ptf["close"].iloc[-1]
-        stop = entry - (atr * 1.5)          # 1.5 ATR stop
+        atr_pct = atr / close
+        if atr_pct < 0.004 or atr_pct > 0.06:
+            return SignalResult(symbol, "long", 0, 0, 0.0, "Volatility out of bounds", False)
 
-        # Simple score (will be expanded later with full weighted model)
-        score = 82.0  # Placeholder — all conditions passed = valid zone
+        # Entry & Stop
+        entry = close
+        stop = entry - (atr * 1.5)
+
+        # Basic score (all conditions passed → valid zone)
+        # Later we will expand to full weighted model
+        score = 85.0
 
         return SignalResult(
             symbol=symbol,
             side="long",
-            entry_price=entry,
-            stop_price=stop,
+            entry_price=float(entry),
+            stop_price=float(stop),
             score=score,
             reason="All V1 conditions passed",
             is_valid=True,
