@@ -29,21 +29,16 @@ The bot’s default state is: **NO TRADE**
 | Live trading               | Forbidden until Gates pass     |
 
 **Primary Directive**  
-Protect capital first.  
-Trade only when a measurable statistical edge exists.  
-Cut invalid trades according to predefined rules.  
-Never exceed the risk budget.  
-Stop when conditions become abnormal.  
-Compound only after performance has been demonstrated.
+Protect capital first. Trade only when a measurable statistical edge exists. Cut invalid trades according to predefined rules. Never exceed the risk budget. Stop when conditions become abnormal. Compound only after performance has been demonstrated.
 
 ---
 
-## Development Phases
+## Roadmap
 
-- **PHASE A** — Research (mathematics & rules) ✅
-- **PHASE B** — Backtester ✅ (bar-by-bar + portfolio)
-- **PHASE C** — Reality check (fees, spread, slippage) ✅ included
-- **PHASE D** — Out-of-sample testing
+- **PHASE A** — Research rules ✅
+- **PHASE B** — Backtester ✅
+- **PHASE C** — Reality check (fees/slippage) ✅
+- **PHASE D** — Out-of-sample + walk-forward ✅ framework ready
 - **PHASE E** — Paper trading
 - **PHASE F** — Testnet
 - **PHASE G** — Micro-live
@@ -53,30 +48,22 @@ Fail any gate → Do not deploy.
 
 ---
 
-## How to run Research
+## How to run
 
 ```bash
 pip install -r requirements.txt
-python scripts/run_research.py
-```
 
-This runs portfolio research across BTC/ETH/SOL with shared capital logic and produces a full report.
+# Phase B/C — portfolio research
+python scripts/run_research.py
+
+# Phase D — out-of-sample + walk-forward
+python scripts/run_walk_forward.py
+```
 
 ---
 
 ## Current Status
 
-- Clean modular architecture
-- Constitution locked
-- Risk Engine + Kill Switch
-- Deterministic long-only strategy
-- Full bar-by-bar Research Engine
-- Multi-symbol Portfolio Research Engine
-- Realistic costs included
-- Live trading disabled
+Phase D framework is implemented.
 
-**Next priorities:**
-- You run the research script and share results
-- Strategy hardening based on evidence
-- Out-of-sample / walk-forward framework
-- True simultaneous shared-equity multi-asset simulation
+**Next on the roadmap:** Phase E paper-trading engine (real-time data, zero real money).
