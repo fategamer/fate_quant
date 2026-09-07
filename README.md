@@ -11,20 +11,9 @@ Risk-first Binance **spot** system. Default state: **NO TRADE**.
 - Max daily loss: 1%
 - Max drawdown: 5%
 - Max open positions: 1
+- Time-stop: 48 x 1h bars
 - No leverage, martingale, grid, or memecoins
 - Live/mainnet trading locked
-
-## Roadmap
-
-- A Rules ✅
-- B Backtester ✅
-- C Costs ✅
-- D OOS + walk-forward ✅
-- E Paper ✅
-- F Testnet ✅
-- Quality: look-ahead fix, regime engine, weighted scoring, journal ✅
-- G Micro-live — locked
-- H Scale — locked
 
 ## Commands
 
@@ -35,9 +24,16 @@ python scripts/run_gates.py
 python scripts/run_paper.py
 ```
 
-Testnet (testnet keys only in `.env`):
+### Telegram alerts (optional)
+
+1. Create a bot with BotFather and copy the token
+2. Message your bot, then get your chat id
+3. Put both in `.env`:
 
 ```bash
 cp config/secrets.example.env .env
-python scripts/run_testnet.py
+# fill TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+python scripts/test_telegram.py
 ```
+
+If those vars are missing, the system still runs and only logs alerts.
