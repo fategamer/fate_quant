@@ -1,49 +1,43 @@
 # FATE QUANT V1.0
 
-**Risk-first crypto spot trading system**
-
-Default state: **NO TRADE**
+Risk-first crypto **spot** system. Default state: **NO TRADE**.
 
 ## Constitution
 
-- Market: Binance Spot only
-- Universe: BTC/USDT, ETH/USDT, SOL/USDT
+- BTC/USDT, ETH/USDT, SOL/USDT only
+- Binance Spot
 - Capital: KES 10,000
-- Paper / first live allocation: 10% only
-- Risk per trade: 0.25%
+- First allocation: 10%
+- Risk/trade: 0.25%
 - Max daily loss: 1%
 - Max drawdown: 5%
-- Leverage / martingale / grid / memecoins: prohibited
-- Live trading: locked until gates pass
+- No leverage, no martingale, no grid, no memecoins
+- Live/mainnet trading locked until all gates pass
 
 ## Roadmap
 
-- PHASE A Research rules ✅
-- PHASE B Backtester ✅
-- PHASE C Fees + slippage ✅
-- PHASE D Out-of-sample + walk-forward ✅
-- PHASE E Paper trading ✅ framework ready
-- PHASE F Testnet
-- PHASE G Micro-live
-- PHASE H Scale
+- A Rules ✅
+- B Backtester ✅
+- C Costs ✅
+- D OOS + walk-forward ✅
+- E Paper trading ✅
+- F Testnet ✅ framework ready
+- G Micro-live (real funds, 10% only) — locked
+- H Scale — locked
 
 ## Commands
 
 ```bash
 pip install -r requirements.txt
 
-# Research / portfolio backtest
 python scripts/run_research.py
-
-# Out-of-sample + walk-forward
 python scripts/run_walk_forward.py
-
-# Paper trading — one scan
 python scripts/run_paper.py
 
-# Paper trading — 10 cycles, 60s apart
-python scripts/run_paper.py --loops 10 --sleep 60
+# Phase F — testnet keys required in .env
+cp config/secrets.example.env .env
+python scripts/run_testnet.py
 ```
 
-Paper mode uses live public market data and the same risk engine.
-It never sends real orders.
+Get testnet keys only from Binance Spot Testnet (`testnet.binance.vision`).
+Do not put mainnet keys in `.env`.

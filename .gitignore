@@ -39,6 +39,7 @@ ENV/
 config/secrets.yaml
 config/secrets.json
 .env.local
+config/secrets.env
 
 # Data & logs
 data/raw/
