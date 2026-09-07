@@ -1,6 +1,6 @@
 """
 FATE QUANT — Research Engine
-Bar-by-bar simulation with fees, slippage, sizing, kill switch.
+Bar-by-bar simulation with fees, slippage, sizing, kill switch, time-stop.
 Evaluates signals at the CURRENT bar only.
 """
 
@@ -8,7 +8,13 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 import pandas as pd
 import numpy as np
-from config.settings import TOTAL_CAPITAL_KES, TAKER_FEE, SLIPPAGE_PCT, SCORE_GATES
+from config.settings import (
+    TOTAL_CAPITAL_KES,
+    TAKER_FEE,
+    SLIPPAGE_PCT,
+    SCORE_GATES,
+    MAX_BARS_IN_TRADE,
+)
 from risk.risk_engine import RiskEngine, PositionSizeResult
 from strategies.trend_momentum_breakout import TrendMomentumBreakout
 
@@ -91,6 +97,17 @@ class ResearchEngine:
         fee = effective_price * quantity * TAKER_FEE
         return effective_price, fee
 
+    def _close(self, symbol, entry_time, current_time, entry_price, exit_price, quantity, entry_fees, reason):
+        eff_exit, exit_fee = self._apply_exit_costs(exit_price, quantity)
+        pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
+        self.equity += pnl
+        self.risk.update_equity(self.equity, trade_pnl=pnl)
+        self.trades.append(self._trade(
+            symbol, entry_time, current_time, entry_price, eff_exit,
+            quantity, pnl, entry_fees + exit_fee, reason,
+        ))
+        self.equity_curve.append(self.equity)
+
     def run_bar_by_bar(
         self,
         symbol: str,
@@ -112,9 +129,9 @@ class ResearchEngine:
         quantity = 0.0
         entry_time = None
         entry_fees = 0.0
+        bars_held = 0
 
-        start_i = 60
-        for i in range(start_i, len(df)):
+        for i in range(60, len(df)):
             current_time = df.index[i]
             high = df["high"].iloc[i]
             low = df["low"].iloc[i]
@@ -124,43 +141,27 @@ class ResearchEngine:
 
             if self.risk.check_kill_switch():
                 if position_open:
-                    eff_exit, exit_fee = self._apply_exit_costs(close, quantity)
-                    pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
-                    self.equity += pnl
-                    self.trades.append(self._trade(
-                        symbol, entry_time, current_time, entry_price, eff_exit,
-                        quantity, pnl, entry_fees + exit_fee, "Kill Switch",
-                    ))
+                    self._close(symbol, entry_time, current_time, entry_price, close, quantity, entry_fees, "Kill Switch")
                     position_open = False
                 break
 
             if position_open:
+                bars_held += 1
                 if low <= stop_price:
-                    eff_exit, exit_fee = self._apply_exit_costs(stop_price, quantity)
-                    pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
-                    self.equity += pnl
-                    self.risk.update_equity(self.equity, trade_pnl=pnl)
-                    self.trades.append(self._trade(
-                        symbol, entry_time, current_time, entry_price, eff_exit,
-                        quantity, pnl, entry_fees + exit_fee, "Stop Loss",
-                    ))
+                    self._close(symbol, entry_time, current_time, entry_price, stop_price, quantity, entry_fees, "Stop Loss")
                     position_open = False
-                    self.equity_curve.append(self.equity)
                     continue
 
                 risk_dist = entry_price - stop_price
                 take_profit = entry_price + (risk_dist * 2.0)
                 if high >= take_profit:
-                    eff_exit, exit_fee = self._apply_exit_costs(take_profit, quantity)
-                    pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
-                    self.equity += pnl
-                    self.risk.update_equity(self.equity, trade_pnl=pnl)
-                    self.trades.append(self._trade(
-                        symbol, entry_time, current_time, entry_price, eff_exit,
-                        quantity, pnl, entry_fees + exit_fee, "Take Profit 2R",
-                    ))
+                    self._close(symbol, entry_time, current_time, entry_price, take_profit, quantity, entry_fees, "Take Profit 2R")
                     position_open = False
-                    self.equity_curve.append(self.equity)
+                    continue
+
+                if bars_held >= MAX_BARS_IN_TRADE:
+                    self._close(symbol, entry_time, current_time, entry_price, close, quantity, entry_fees, "Time Stop")
+                    position_open = False
                     continue
             else:
                 signal = strategy.generate_signal(symbol, bar_index=i)
@@ -177,22 +178,17 @@ class ResearchEngine:
                         quantity = size_result.quantity
                         entry_time = current_time
                         entry_fees = entry_fee
+                        bars_held = 0
                         position_open = True
                         self.equity -= entry_fee
 
             self.equity_curve.append(self.equity)
 
         if position_open:
-            last_close = df["close"].iloc[-1]
-            last_time = df.index[-1]
-            eff_exit, exit_fee = self._apply_exit_costs(last_close, quantity)
-            pnl = (eff_exit - entry_price) * quantity - entry_fees - exit_fee
-            self.equity += pnl
-            self.trades.append(self._trade(
-                symbol, entry_time, last_time, entry_price, eff_exit,
-                quantity, pnl, entry_fees + exit_fee, "End of data",
-            ))
-            self.equity_curve.append(self.equity)
+            self._close(
+                symbol, entry_time, df.index[-1], entry_price,
+                df["close"].iloc[-1], quantity, entry_fees, "End of data",
+            )
 
         return self.calculate_metrics(self.trades)
 
