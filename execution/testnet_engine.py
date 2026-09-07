@@ -1,13 +1,11 @@
 """
 FATE QUANT — Testnet Engine
-
-Phase F:
 Same decision stack as paper mode.
 Orders go to Binance Spot TESTNET only.
-Real capital is still forbidden.
 """
 
 from typing import Dict
+from datetime import datetime, timezone
 from loguru import logger
 
 from config.settings import (
@@ -18,9 +16,12 @@ from config.settings import (
     SCORE_GATES,
     TOTAL_CAPITAL_KES,
     INITIAL_LIVE_ALLOCATION_PCT,
+    MAX_OPEN_POSITIONS,
+    MAX_BARS_IN_TRADE,
 )
 from data.data_handler import DataHandler
 from risk.risk_engine import RiskEngine
+from risk.session import DailySession
 from strategies.trend_momentum_breakout import TrendMomentumBreakout
 from execution.testnet_broker import TestnetBroker
 from alerts.logger_alerts import AlertBus
@@ -30,7 +31,7 @@ from portfolio.paper_portfolio import PaperPortfolio
 class TestnetEngine:
     def __init__(self):
         if ALLOW_LIVE_TRADING:
-            raise RuntimeError("Refuse to start: ALLOW_LIVE_TRADING is True. Testnet engine will not run.")
+            raise RuntimeError("Refuse to start: ALLOW_LIVE_TRADING is True.")
 
         self.handler = DataHandler()
         self.broker = TestnetBroker()
@@ -38,14 +39,13 @@ class TestnetEngine:
         if not ready:
             raise RuntimeError(f"Testnet broker not ready: {reason}")
 
-        # Local risk ledger. Testnet USDT balance is separate play money.
         allocated = TOTAL_CAPITAL_KES * INITIAL_LIVE_ALLOCATION_PCT
         self.risk = RiskEngine(equity=allocated, research_mode=True)
+        self.session = DailySession(self.risk)
         self.portfolio = PaperPortfolio(starting_cash=allocated)
         self.alerts = AlertBus()
         self.last_prices: Dict[str, float] = {}
-
-        logger.info("Testnet engine started. Mainnet disabled. Live trading disabled.")
+        logger.info("Testnet engine started. Mainnet disabled.")
 
     def _refresh(self):
         equity = self.portfolio.mark_to_market(self.last_prices)
@@ -53,6 +53,7 @@ class TestnetEngine:
         return equity
 
     def scan_symbol(self, symbol: str):
+        self.session.roll()
         if self.risk.check_kill_switch():
             self.alerts.notify(f"KILL SWITCH: {self.risk.lock_reason}")
             return
@@ -70,20 +71,29 @@ class TestnetEngine:
 
         if self.portfolio.has_position(symbol):
             pos = self.portfolio.positions[symbol]
-            if low <= pos.stop_price or high >= pos.take_profit:
-                reason = "Stop Loss" if low <= pos.stop_price else "Take Profit 2R"
-                fill = self.broker.market_sell(symbol, pos.quantity)
-                trade = self.portfolio.close_long(symbol, fill.price or last, 0.0, reason)
-                if trade:
-                    self.risk.update_equity(self._refresh(), trade_pnl=trade.pnl)
-                    self.alerts.notify(
-                        f"TESTNET CLOSE {symbol} {reason} id={fill.order_id} pnl={trade.pnl:.2f}"
-                    )
+            hours_held = (datetime.now(timezone.utc) - pos.entry_time).total_seconds() / 3600
+            if low <= pos.stop_price:
+                reason = "Stop Loss"
+            elif high >= pos.take_profit:
+                reason = "Take Profit 2R"
+            elif hours_held >= MAX_BARS_IN_TRADE:
+                reason = "Time Stop"
+            else:
+                return
+            fill = self.broker.market_sell(symbol, pos.quantity)
+            trade = self.portfolio.close_long(symbol, fill.price or last, 0.0, reason)
+            if trade:
+                self.risk.update_equity(self._refresh(), trade_pnl=trade.pnl)
+                self.alerts.notify(
+                    f"TESTNET CLOSE {symbol} {reason} id={fill.order_id} pnl={trade.pnl:.2f}"
+                )
+            return
+
+        if self.portfolio.open_count() >= MAX_OPEN_POSITIONS:
             return
 
         can_trade, reason = self.risk.can_open_trade()
         if not can_trade:
-            logger.debug(f"No new testnet trade {symbol}: {reason}")
             return
 
         signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
@@ -92,12 +102,9 @@ class TestnetEngine:
 
         size = self.risk.calculate_position_size(signal.entry_price, signal.stop_price)
         if size.rejected or size.quantity <= 0:
-            logger.info(f"TESTNET SIZE REJECTED {symbol}: {size.reason}")
             return
 
-        risk_dist = abs(signal.entry_price - signal.stop_price)
-        take_profit = signal.entry_price + risk_dist * 2.0
-
+        take_profit = signal.entry_price + abs(signal.entry_price - signal.stop_price) * 2.0
         fill = self.broker.market_buy(symbol, size.quantity)
         opened = self.portfolio.open_long(
             symbol=symbol,
