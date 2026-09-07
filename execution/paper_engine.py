@@ -14,6 +14,7 @@ from config.settings import (
     HIGHER_TIMEFRAME,
     ALLOW_LIVE_TRADING,
     SCORE_GATES,
+    MAX_OPEN_POSITIONS,
 )
 from data.data_handler import DataHandler
 from risk.risk_engine import RiskEngine
@@ -21,6 +22,7 @@ from strategies.trend_momentum_breakout import TrendMomentumBreakout
 from execution.paper_broker import PaperBroker
 from portfolio.paper_portfolio import PaperPortfolio
 from alerts.logger_alerts import AlertBus
+from database.journal import TradeJournal
 
 
 class PaperEngine:
@@ -31,6 +33,7 @@ class PaperEngine:
         self.portfolio = PaperPortfolio(starting_cash=paper_capital)
         self.risk = RiskEngine(equity=paper_capital, research_mode=True)
         self.alerts = AlertBus()
+        self.journal = TradeJournal("paper_trades.csv")
         self.last_prices: Dict[str, float] = {}
 
         if ALLOW_LIVE_TRADING:
@@ -52,6 +55,10 @@ class PaperEngine:
             trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, reason)
             if trade:
                 self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
+                self.journal.write("CLOSE", {
+                    "symbol": symbol, "side": "sell", "quantity": trade.quantity,
+                    "price": trade.exit_price, "pnl": trade.pnl, "reason": reason,
+                })
                 self.alerts.notify(f"CLOSED {symbol} | PnL {trade.pnl:.2f} | {reason}")
 
     def scan_symbol(self, symbol: str):
@@ -78,6 +85,10 @@ class PaperEngine:
                 trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, "Stop Loss")
                 if trade:
                     self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
+                    self.journal.write("CLOSE", {
+                        "symbol": symbol, "side": "sell", "quantity": trade.quantity,
+                        "price": trade.exit_price, "pnl": trade.pnl, "reason": "Stop Loss",
+                    })
                     self.alerts.notify(f"STOP {symbol} | PnL {trade.pnl:.2f}")
                 return
             if high >= pos.take_profit:
@@ -85,8 +96,15 @@ class PaperEngine:
                 trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, "Take Profit 2R")
                 if trade:
                     self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
+                    self.journal.write("CLOSE", {
+                        "symbol": symbol, "side": "sell", "quantity": trade.quantity,
+                        "price": trade.exit_price, "pnl": trade.pnl, "reason": "Take Profit 2R",
+                    })
                     self.alerts.notify(f"TP {symbol} | PnL {trade.pnl:.2f}")
                 return
+            return
+
+        if self.portfolio.open_count() >= MAX_OPEN_POSITIONS:
             return
 
         can_trade, reason = self.risk.can_open_trade()
@@ -120,6 +138,11 @@ class PaperEngine:
             return
 
         self._refresh_equity()
+        self.journal.write("OPEN", {
+            "symbol": symbol, "side": "buy", "quantity": size.quantity,
+            "price": fill.fill_price, "stop": signal.stop_price,
+            "take_profit": take_profit, "score": signal.score, "reason": signal.reason,
+        })
         self.alerts.notify(
             f"PAPER OPEN {symbol} qty={size.quantity:.6f} entry={fill.fill_price:.4f} "
             f"stop={signal.stop_price:.4f} tp={take_profit:.4f} score={signal.score:.1f}"
