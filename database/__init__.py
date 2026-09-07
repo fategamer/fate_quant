@@ -1,1 +1,1 @@
-# Trade logs & performance storage
+from .journal import TradeJournal

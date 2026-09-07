@@ -1,24 +1,24 @@
 """
 FATE QUANT V1.0 — Global Configuration
-This file contains the constitution. Strategies cannot override these values.
+Constitution. Strategies cannot override these values.
 """
 
-# === CAPITAL & RISK (CONSTITUTION) ===
+# === CAPITAL & RISK ===
 TOTAL_CAPITAL_KES = 10_000
-INITIAL_LIVE_ALLOCATION_PCT = 0.10          # 10% only
-RISK_PER_TRADE_PCT = 0.0025                 # 0.25%
-MAX_DAILY_LOSS_PCT = 0.01                   # 1%
-MAX_DRAWDOWN_PCT = 0.05                     # 5%
+INITIAL_LIVE_ALLOCATION_PCT = 0.10
+RISK_PER_TRADE_PCT = 0.0025
+MAX_DAILY_LOSS_PCT = 0.01
+MAX_DRAWDOWN_PCT = 0.05
+MAX_OPEN_POSITIONS = 1                      # one position at a time in V1
 
-# Calculated absolute values
-RISK_PER_TRADE_KES = TOTAL_CAPITAL_KES * RISK_PER_TRADE_PCT          # 25
-MAX_DAILY_LOSS_KES = TOTAL_CAPITAL_KES * MAX_DAILY_LOSS_PCT          # 100
-MAX_DRAWDOWN_KES = TOTAL_CAPITAL_KES * MAX_DRAWDOWN_PCT              # 500
-INITIAL_LIVE_CAPITAL_KES = TOTAL_CAPITAL_KES * INITIAL_LIVE_ALLOCATION_PCT  # 1000
+RISK_PER_TRADE_KES = TOTAL_CAPITAL_KES * RISK_PER_TRADE_PCT
+MAX_DAILY_LOSS_KES = TOTAL_CAPITAL_KES * MAX_DAILY_LOSS_PCT
+MAX_DRAWDOWN_KES = TOTAL_CAPITAL_KES * MAX_DRAWDOWN_PCT
+INITIAL_LIVE_CAPITAL_KES = TOTAL_CAPITAL_KES * INITIAL_LIVE_ALLOCATION_PCT
 
 # === MARKET ===
 EXCHANGE = "binance"
-MARKET_TYPE = "spot"                        # No leverage
+MARKET_TYPE = "spot"
 ALLOWED_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
 
 # === PROHIBITIONS ===
@@ -26,11 +26,11 @@ ALLOW_LEVERAGE = False
 ALLOW_MARTINGALE = False
 ALLOW_GRID = False
 ALLOW_MEMECOINS = False
-ALLOW_LIVE_TRADING = False                  # Locked until Gates pass
+ALLOW_LIVE_TRADING = False
 
 # === TIMEFRAMES ===
-HIGHER_TIMEFRAME = "4h"                     # Regime / Trend filter
-PRIMARY_TIMEFRAME = "1h"                    # Signal generation
+HIGHER_TIMEFRAME = "4h"
+PRIMARY_TIMEFRAME = "1h"
 
 # === SCORING ===
 SCORE_WEIGHTS = {
@@ -50,10 +50,10 @@ SCORE_GATES = {
     "high_confidence_min": 90,
 }
 
-# === COSTS (for realistic backtesting) ===
-TAKER_FEE = 0.001                           # 0.10%
-MAKER_FEE = 0.001                           # 0.10% (conservative)
-SLIPPAGE_PCT = 0.0005                       # 0.05% assumed average slippage
+# === COSTS ===
+TAKER_FEE = 0.001
+MAKER_FEE = 0.001
+SLIPPAGE_PCT = 0.0005
 
 # === KILL SWITCH ===
 KILL_SWITCH = {
@@ -61,3 +61,6 @@ KILL_SWITCH = {
     "max_drawdown_pct": 0.05,
     "max_consecutive_losses": 5,
 }
+
+# === JOURNAL ===
+JOURNAL_DIR = "database/journal"
