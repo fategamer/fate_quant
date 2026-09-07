@@ -1,14 +1,9 @@
 """
 FATE QUANT — Paper Trading Engine
-
-Phase E:
-- Real market data
-- Real strategy decisions
-- Real risk checks
-- Zero real money
+Live public data. Real decisions. Zero real money.
 """
 
-from typing import Dict, Optional
+from typing import Dict
 from loguru import logger
 
 from config.settings import (
@@ -30,8 +25,6 @@ from alerts.logger_alerts import AlertBus
 
 class PaperEngine:
     def __init__(self):
-        # Only 10% allocation is used even in paper mode,
-        # matching the constitution's live-test allocation rule.
         paper_capital = TOTAL_CAPITAL_KES * INITIAL_LIVE_ALLOCATION_PCT
         self.handler = DataHandler()
         self.broker = PaperBroker()
@@ -59,13 +52,9 @@ class PaperEngine:
             trade = self.portfolio.close_long(symbol, fill.fill_price, fill.fee, reason)
             if trade:
                 self.risk.update_equity(self._refresh_equity(), trade_pnl=trade.pnl)
-                self.alerts.notify(
-                    f"CLOSED {symbol} | PnL {trade.pnl:.2f} | {reason}"
-                )
+                self.alerts.notify(f"CLOSED {symbol} | PnL {trade.pnl:.2f} | {reason}")
 
     def scan_symbol(self, symbol: str):
-        equity = self._refresh_equity()
-
         if self.risk.check_kill_switch():
             self.alerts.notify(f"KILL SWITCH: {self.risk.lock_reason}")
             self._close_all("Kill Switch")
@@ -73,7 +62,6 @@ class PaperEngine:
 
         htf = self.handler.fetch_ohlcv(symbol, HIGHER_TIMEFRAME, limit=250)
         ptf = self.handler.fetch_ohlcv(symbol, PRIMARY_TIMEFRAME, limit=200)
-
         if not self.handler.validate_data(htf) or not self.handler.validate_data(ptf):
             self.alerts.notify(f"DATA INVALID: {symbol}")
             return
@@ -83,7 +71,6 @@ class PaperEngine:
         low = float(ptf["low"].iloc[-1])
         self.last_prices[symbol] = last
 
-        # Manage open position first
         if self.portfolio.has_position(symbol):
             pos = self.portfolio.positions[symbol]
             if low <= pos.stop_price:
@@ -102,17 +89,14 @@ class PaperEngine:
                 return
             return
 
-        # New entries only if no lock and no existing position
         can_trade, reason = self.risk.can_open_trade()
         if not can_trade:
             logger.debug(f"No new trade {symbol}: {reason}")
             return
 
-        strategy = TrendMomentumBreakout(htf, ptf)
-        signal = strategy.generate_signal(symbol)
-
+        signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
         if not signal.is_valid or signal.score < SCORE_GATES["valid_min"]:
-            logger.debug(f"NO TRADE {symbol}: {signal.reason} score={signal.score}")
+            logger.debug(f"NO TRADE {symbol}: {signal.reason} score={signal.score:.1f}")
             return
 
         size = self.risk.calculate_position_size(signal.entry_price, signal.stop_price)
@@ -122,7 +106,6 @@ class PaperEngine:
 
         risk_dist = abs(signal.entry_price - signal.stop_price)
         take_profit = signal.entry_price + (risk_dist * 2.0)
-
         fill = self.broker.buy(symbol, size.quantity, signal.entry_price, signal.reason)
         opened = self.portfolio.open_long(
             symbol=symbol,
@@ -138,13 +121,11 @@ class PaperEngine:
 
         self._refresh_equity()
         self.alerts.notify(
-            f"PAPER OPEN {symbol} qty={size.quantity:.6f} "
-            f"entry={fill.fill_price:.4f} stop={signal.stop_price:.4f} "
-            f"tp={take_profit:.4f} score={signal.score:.1f}"
+            f"PAPER OPEN {symbol} qty={size.quantity:.6f} entry={fill.fill_price:.4f} "
+            f"stop={signal.stop_price:.4f} tp={take_profit:.4f} score={signal.score:.1f}"
         )
 
     def run_once(self):
-        """One scan cycle across the universe."""
         logger.info("Paper scan starting")
         for symbol in ALLOWED_SYMBOLS:
             try:
