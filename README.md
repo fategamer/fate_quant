@@ -41,7 +41,7 @@ Compound only after performance has been demonstrated.
 ## Development Phases
 
 - **PHASE A** — Research (mathematics & rules) ✅
-- **PHASE B** — Backtester ✅ (bar-by-bar engine live)
+- **PHASE B** — Backtester ✅ (bar-by-bar + portfolio)
 - **PHASE C** — Reality check (fees, spread, slippage) ✅ included
 - **PHASE D** — Out-of-sample testing
 - **PHASE E** — Paper trading
@@ -53,19 +53,14 @@ Fail any gate → Do not deploy.
 
 ---
 
-## How to run the Research Engine
+## How to run Research
 
 ```bash
 pip install -r requirements.txt
 python scripts/run_research.py
 ```
 
-This will:
-1. Fetch recent OHLCV for BTC/ETH/SOL
-2. Run the deterministic rules bar-by-bar
-3. Apply fees + slippage
-4. Respect position sizing and kill-switch logic
-5. Print a full performance report
+This runs portfolio research across BTC/ETH/SOL with shared capital logic and produces a full report.
 
 ---
 
@@ -74,12 +69,14 @@ This will:
 - Clean modular architecture
 - Constitution locked
 - Risk Engine + Kill Switch
-- Deterministic long-only strategy (Trend + Momentum + Breakout)
-- Full bar-by-bar Research Engine with realistic costs
-- Runnable research script
+- Deterministic long-only strategy
+- Full bar-by-bar Research Engine
+- Multi-symbol Portfolio Research Engine
+- Realistic costs included
+- Live trading disabled
 
 **Next priorities:**
-- Improve signal quality / scoring model
-- Multi-symbol portfolio simulation
-- Out-of-sample and walk-forward testing
-- Better exit management
+- You run the research script and share results
+- Strategy hardening based on evidence
+- Out-of-sample / walk-forward framework
+- True simultaneous shared-equity multi-asset simulation

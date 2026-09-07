@@ -2,7 +2,7 @@
 FATE QUANT — Research Runner
 
 Fetches recent historical data and runs the Research Engine.
-This is PHASE B work: we want evidence, not hope.
+Supports single-symbol and portfolio modes.
 """
 
 import sys
@@ -11,10 +11,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.data_handler import DataHandler
 from backtesting.research_engine import ResearchEngine
+from backtesting.portfolio_research import PortfolioResearchEngine
 from config.settings import ALLOWED_SYMBOLS, PRIMARY_TIMEFRAME, HIGHER_TIMEFRAME, TOTAL_CAPITAL_KES
 
 
-def run_single_symbol(symbol: str, limit: int = 1000):
+def run_single_symbol(symbol: str, limit: int = 800):
     print(f"\n{'='*60}")
     print(f"Researching: {symbol}")
     print(f"{'='*60}")
@@ -47,6 +48,22 @@ def run_single_symbol(symbol: str, limit: int = 1000):
     return report
 
 
+def run_portfolio():
+    print("\n" + "="*60)
+    print("FATE QUANT — PORTFOLIO RESEARCH")
+    print("="*60)
+    print(f"Capital: KES {TOTAL_CAPITAL_KES:,}")
+    print(f"Symbols: {ALLOWED_SYMBOLS}")
+    print("Live trading: DISABLED")
+    print()
+
+    engine = PortfolioResearchEngine(initial_capital=TOTAL_CAPITAL_KES)
+    report = engine.run()
+
+    print(report.summary())
+    return report
+
+
 def main():
     print("FATE QUANT V1 — Research Engine")
     print("Mission: Protect capital first. Only trade with measurable edge.")
@@ -54,22 +71,12 @@ def main():
     print("Live trading: DISABLED")
     print()
 
-    results = {}
-    for symbol in ALLOWED_SYMBOLS:
-        try:
-            report = run_single_symbol(symbol, limit=800)
-            if report:
-                results[symbol] = report
-        except Exception as e:
-            print(f"Error on {symbol}: {e}")
+    # Default: run portfolio research
+    run_portfolio()
 
-    print("\n" + "="*60)
-    print("RESEARCH SUMMARY")
-    print("="*60)
-    for symbol, report in results.items():
-        status = "INTERESTING" if report.max_drawdown_pct < 15 and report.total_return_pct > 0 else "NEEDS WORK"
-        print(f"{symbol}: Return {report.total_return_pct:.1f}% | DD {report.max_drawdown_pct:.1f}% | "
-              f"Trades {report.total_trades} | {status}")
+    # Uncomment below if you want individual symbol deep dives
+    # for symbol in ALLOWED_SYMBOLS:
+    #     run_single_symbol(symbol)
 
 
 if __name__ == "__main__":
