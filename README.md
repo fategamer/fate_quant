@@ -26,7 +26,7 @@ The bot’s default state is: **NO TRADE**
 | Martingale                 | Prohibited                     |
 | Grid                       | Prohibited                     |
 | Memecoins                  | Prohibited                     |
-| Live trading               | Forbidden until Gates 1–5 pass |
+| Live trading               | Forbidden until Gates pass     |
 
 **Primary Directive**  
 Protect capital first.  
@@ -38,61 +38,30 @@ Compound only after performance has been demonstrated.
 
 ---
 
-## Testing Gates (Mandatory)
+## Development Phases
 
-1. Historical backtest  
-2. Transaction costs + slippage simulation  
-3. Out-of-sample testing  
-4. Walk-forward testing  
-5. Paper trading  
-6. Tiny live deployment  
-7. Performance review  
-8. Controlled scaling  
+- **PHASE A** — Research (mathematics & rules)
+- **PHASE B** — Backtester
+- **PHASE C** — Reality check (fees, spread, slippage)
+- **PHASE D** — Out-of-sample testing
+- **PHASE E** — Paper trading
+- **PHASE F** — Testnet
+- **PHASE G** — Micro-live
+- **PHASE H** — Controlled scaling
 
 Fail any gate → Do not deploy.
 
 ---
 
-## Architecture Pipeline
+## Current Status
 
-```
-MARKET DATA
-    ↓
-DATA VALIDATOR
-    ↓
-REGIME ENGINE
-    ↓
-SIGNAL ENGINE
-    ↓
-RISK ENGINE  ←— KILL SWITCH (highest authority)
-    ↓
-POSITION SIZE
-    ↓
-EXECUTION
-    ↓
-POSITION MONITOR
-    ↓
-PERFORMANCE
-```
+- Repository structure: Complete
+- Constitution locked in `config/settings.py`
+- Risk Engine with Kill Switch: Implemented
+- Deterministic Trend + Momentum + Breakout strategy (long-only): Implemented
+- Research Engine (backtester) skeleton with full metrics: Implemented
+- Data Handler: Implemented
 
----
+**Next priority:** Make the Research Engine fully functional so we can answer:
 
-## Scoring Model
-
-| Factor            | Weight |
-|-------------------|--------|
-| Trend             | 20%    |
-| Market Structure  | 20%    |
-| Momentum          | 15%    |
-| Volatility        | 15%    |
-| Volume            | 10%    |
-| Liquidity         | 10%    |
-| Regime            | 10%    |
-
-**Score Gates**
-- 0–69  → NO TRADE
-- 70–79  → WATCH
-- 80–89  → VALID TRADE
-- 90–100 → HIGH-CONFIDENCE TRADE
-
-High score does **not** increase risk size. Risk remains fixed at 0.25%.
+> “If I had run these exact rules historically, what would have happened after realistic costs?”

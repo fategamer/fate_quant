@@ -1,1 +1,1 @@
-# High-level strategy orchestration
+from .trend_momentum_breakout import TrendMomentumBreakout, SignalResult

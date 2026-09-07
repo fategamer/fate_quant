@@ -10,7 +10,7 @@ RISK_PER_TRADE_PCT = 0.0025                 # 0.25%
 MAX_DAILY_LOSS_PCT = 0.01                   # 1%
 MAX_DRAWDOWN_PCT = 0.05                     # 5%
 
-# Calculated absolute values (based on total capital)
+# Calculated absolute values
 RISK_PER_TRADE_KES = TOTAL_CAPITAL_KES * RISK_PER_TRADE_PCT          # 25
 MAX_DAILY_LOSS_KES = TOTAL_CAPITAL_KES * MAX_DAILY_LOSS_PCT          # 100
 MAX_DRAWDOWN_KES = TOTAL_CAPITAL_KES * MAX_DRAWDOWN_PCT              # 500
@@ -27,6 +27,10 @@ ALLOW_MARTINGALE = False
 ALLOW_GRID = False
 ALLOW_MEMECOINS = False
 ALLOW_LIVE_TRADING = False                  # Locked until Gates pass
+
+# === TIMEFRAMES ===
+HIGHER_TIMEFRAME = "4h"                     # Regime / Trend filter
+PRIMARY_TIMEFRAME = "1h"                    # Signal generation
 
 # === SCORING ===
 SCORE_WEIGHTS = {
@@ -46,9 +50,14 @@ SCORE_GATES = {
     "high_confidence_min": 90,
 }
 
+# === COSTS (for realistic backtesting) ===
+TAKER_FEE = 0.001                           # 0.10%
+MAKER_FEE = 0.001                           # 0.10% (conservative)
+SLIPPAGE_PCT = 0.0005                       # 0.05% assumed average slippage
+
 # === KILL SWITCH ===
 KILL_SWITCH = {
     "daily_loss_pct": 0.01,
     "max_drawdown_pct": 0.05,
-    # Additional triggers can be added later (consecutive losses, etc.)
+    "max_consecutive_losses": 5,
 }
