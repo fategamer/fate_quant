@@ -1,25 +1,23 @@
 """
 FATE QUANT — Phase E Paper Trading
-
 Real market data. Real decisions. Zero real money.
-Does NOT place live orders.
 """
 
 import sys
 import os
 import time
 import argparse
+import traceback
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.settings import TOTAL_CAPITAL_KES, INITIAL_LIVE_ALLOCATION_PCT, ALLOW_LIVE_TRADING
-from execution.paper_engine import PaperEngine
 
 
 def main():
     parser = argparse.ArgumentParser(description="FATE QUANT paper trader")
-    parser.add_argument("--loops", type=int, default=1, help="How many scan cycles")
-    parser.add_argument("--sleep", type=int, default=60, help="Seconds between cycles")
+    parser.add_argument("--loops", type=int, default=1)
+    parser.add_argument("--sleep", type=int, default=60)
     args = parser.parse_args()
 
     print("=" * 60)
@@ -35,11 +33,28 @@ def main():
         print("REFUSING TO START: live trading flag is True.")
         return
 
-    engine = PaperEngine()
+    try:
+        from execution.paper_engine import PaperEngine
+        engine = PaperEngine()
+    except ModuleNotFoundError as e:
+        print("Missing package:", e)
+        print("Fix: pip install -r requirements.txt")
+        return
+    except Exception as e:
+        print("Could not start paper engine:")
+        print(e)
+        traceback.print_exc()
+        return
 
     for i in range(args.loops):
         print(f"\n--- Cycle {i + 1}/{args.loops} ---")
-        status = engine.run_once()
+        try:
+            status = engine.run_once()
+        except Exception as e:
+            print("Scan failed:")
+            print(e)
+            traceback.print_exc()
+            return
         print(
             f"Equity={status['equity']:.2f} Cash={status['cash']:.2f} "
             f"Open={status['open']} Closed={status['closed']} "
