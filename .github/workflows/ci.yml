@@ -1,0 +1,22 @@
+name: FATE QUANT CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test-and-research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m pytest tests/ -q
+      - name: Short research
+        run: python scripts/run_research.py
+        continue-on-error: true
