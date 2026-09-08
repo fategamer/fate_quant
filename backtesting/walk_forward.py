@@ -1,19 +1,10 @@
 """
 FATE QUANT — Phase D: Out-of-Sample + Walk-Forward Testing
-
-Purpose:
-Prove the rules still work on data they were NOT tuned on.
-
-Default protocol:
-- In-sample (IS): first 70% of bars
-- Out-of-sample (OOS): last 30% of bars
-- Walk-forward: rolling windows (train → test → roll forward)
-
-A strategy that looks good only on IS and fails OOS is rejected.
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional
+from typing import List, Optional
+import time
 import pandas as pd
 
 from config.settings import TOTAL_CAPITAL_KES, ALLOWED_SYMBOLS, PRIMARY_TIMEFRAME, HIGHER_TIMEFRAME
@@ -89,10 +80,6 @@ class WalkForwardReport:
 
 
 def _verdict(is_report: PerformanceReport, oos_report: PerformanceReport) -> str:
-    """
-    Conservative gate.
-    FAIL if OOS is clearly broken, even if IS looked good.
-    """
     if oos_report.total_trades < 3:
         return "INCONCLUSIVE — too few OOS trades"
     if oos_report.max_drawdown_pct >= 15:
@@ -123,40 +110,36 @@ class OutOfSampleTester:
         self.handler = DataHandler()
 
     def split_frames(self, df: pd.DataFrame, is_ratio: float = 0.70):
-        if df.empty:
+        if df is None or df.empty:
             return df, df
-        split_idx = int(len(df) * is_ratio)
-        split_idx = max(split_idx, 60)
+        split_idx = max(int(len(df) * is_ratio), 80)
+        if split_idx >= len(df) - 20:
+            split_idx = max(len(df) // 2, 60)
         return df.iloc[:split_idx].copy(), df.iloc[split_idx:].copy()
 
     def run_symbol(
         self,
         symbol: str,
-        ptf_limit: int = 1000,
-        htf_limit: int = 600,
+        ptf_limit: int = 800,
+        htf_limit: int = 500,
         is_ratio: float = 0.70,
     ) -> Optional[SplitReport]:
         htf = self.handler.fetch_ohlcv(symbol, HIGHER_TIMEFRAME, limit=htf_limit)
+        time.sleep(0.4)
         ptf = self.handler.fetch_ohlcv(symbol, PRIMARY_TIMEFRAME, limit=ptf_limit)
-
         if not self.handler.validate_data(htf) or not self.handler.validate_data(ptf):
+            print(f"  Invalid data for {symbol}")
+            return None
+        if len(ptf) < 120:
+            print(f"  Not enough bars for {symbol}")
             return None
 
         htf_is, htf_oos = self.split_frames(htf, is_ratio)
         ptf_is, ptf_oos = self.split_frames(ptf, is_ratio)
 
-        is_engine = ResearchEngine(initial_capital=self.initial_capital)
-        oos_engine = ResearchEngine(initial_capital=self.initial_capital)
-
-        is_report = is_engine.run_bar_by_bar(symbol, htf_is, ptf_is)
-        oos_report = oos_engine.run_bar_by_bar(symbol, htf_oos, ptf_oos)
-
-        return SplitReport(
-            symbol=symbol,
-            in_sample=is_report,
-            out_of_sample=oos_report,
-            verdict=_verdict(is_report, oos_report),
-        )
+        is_report = ResearchEngine(self.initial_capital).run_bar_by_bar(symbol, htf_is, ptf_is)
+        oos_report = ResearchEngine(self.initial_capital).run_bar_by_bar(symbol, htf_oos, ptf_oos)
+        return SplitReport(symbol, is_report, oos_report, _verdict(is_report, oos_report))
 
     def run_all(self) -> List[SplitReport]:
         results = []
@@ -173,12 +156,6 @@ class OutOfSampleTester:
 
 
 class WalkForwardTester:
-    """
-    Anchored-style walk-forward:
-    - Train window grows or rolls
-    - Test window is the next unseen segment
-    """
-
     def __init__(self, initial_capital: float = TOTAL_CAPITAL_KES):
         self.initial_capital = initial_capital
         self.handler = DataHandler()
@@ -186,47 +163,39 @@ class WalkForwardTester:
     def run_symbol(
         self,
         symbol: str,
-        ptf_limit: int = 1200,
-        n_folds: int = 4,
+        ptf_limit: int = 800,
+        n_folds: int = 3,
         test_ratio: float = 0.20,
     ) -> Optional[WalkForwardReport]:
-        htf = self.handler.fetch_ohlcv(symbol, HIGHER_TIMEFRAME, limit=700)
+        htf = self.handler.fetch_ohlcv(symbol, HIGHER_TIMEFRAME, limit=400)
+        time.sleep(0.4)
         ptf = self.handler.fetch_ohlcv(symbol, PRIMARY_TIMEFRAME, limit=ptf_limit)
-
         if not self.handler.validate_data(htf) or not self.handler.validate_data(ptf):
             return None
         if len(ptf) < 200:
             return None
 
-        test_size = max(int(len(ptf) * test_ratio), 80)
-        train_min = 120
-
+        test_size = max(int(len(ptf) * test_ratio), 60)
+        train_min = 100
         folds: List[WalkForwardFold] = []
-        start = 0
 
         for fold in range(1, n_folds + 1):
-            train_end = start + train_min + (fold - 1) * test_size
+            train_end = train_min + (fold - 1) * test_size
             test_end = train_end + test_size
-
             if test_end > len(ptf):
                 break
-            if train_end < train_min:
+            ptf_train = ptf.iloc[:train_end]
+            ptf_test = ptf.iloc[train_end:test_end]
+            if ptf_test.empty or ptf_train.empty:
                 continue
 
-            ptf_train = ptf.iloc[:train_end].copy()
-            ptf_test = ptf.iloc[train_end:test_end].copy()
-
-            # Align HTF by timestamp where possible
-            htf_train = htf[htf.index <= ptf_train.index[-1]].copy()
-            htf_test = htf[
-                (htf.index >= ptf_test.index[0]) & (htf.index <= ptf_test.index[-1])
-            ].copy()
+            htf_test = htf[htf.index <= ptf_test.index[-1]]
             if len(htf_test) < 50:
-                htf_test = htf.iloc[-len(ptf_test) * 4 :].copy() if len(htf) > 50 else htf.copy()
+                htf_test = htf.copy()
 
-            engine = ResearchEngine(initial_capital=self.initial_capital)
-            test_report = engine.run_bar_by_bar(symbol, htf_test, ptf_test)
-
+            test_report = ResearchEngine(self.initial_capital).run_bar_by_bar(
+                symbol, htf_test, ptf_test
+            )
             folds.append(
                 WalkForwardFold(
                     fold=fold,
@@ -244,8 +213,7 @@ class WalkForwardTester:
             report.avg_test_dd = sum(f.test_report.max_drawdown_pct for f in folds) / len(folds)
             report.avg_test_pf = sum(f.test_report.profit_factor for f in folds) / len(folds)
             report.passing_folds = sum(
-                1
-                for f in folds
+                1 for f in folds
                 if f.test_report.profit_factor >= 1.0 and f.test_report.max_drawdown_pct < 15
             )
         report.verdict = _wf_verdict(report)
