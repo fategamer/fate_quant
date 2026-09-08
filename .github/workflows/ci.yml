@@ -17,6 +17,9 @@ jobs:
         run: pip install -r requirements.txt
       - name: Unit tests
         run: python -m pytest tests/ -q
-      - name: Short research
+      - name: Research
         run: python scripts/run_research.py
+        continue-on-error: true
+      - name: Walk-forward / OOS
+        run: python scripts/run_walk_forward.py
         continue-on-error: true
