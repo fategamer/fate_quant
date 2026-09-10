@@ -17,6 +17,10 @@ jobs:
       - name: Install
         run: pip install -r requirements.txt
       - name: Paper scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALLOW_LIVE_TRADING: "false"
         run: python scripts/run_paper.py --loops 1
       - name: Journal review
         run: python scripts/review_journal.py
