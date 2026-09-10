@@ -13,32 +13,39 @@ def main():
     print("FATE QUANT — journal review")
     if not os.path.exists(PATH):
         print("No paper journal yet.")
-        print("Run: python scripts/run_paper.py")
         return
 
-    opens = closes = 0
+    scans = opens = closes = 0
     pnls = []
+    last_scans = []
     with open(PATH, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            if row.get("event") == "OPEN":
+            ev = row.get("event")
+            if ev == "SCAN":
+                scans += 1
+                last_scans.append(row)
+            elif ev == "OPEN":
                 opens += 1
-            elif row.get("event") == "CLOSE":
+            elif ev == "CLOSE":
                 closes += 1
                 try:
                     pnls.append(float(row.get("pnl") or 0))
                 except ValueError:
                     pass
 
-    wins = [p for p in pnls if p > 0]
-    losses = [p for p in pnls if p <= 0]
+    print(f"Scans  : {scans}")
     print(f"Opens  : {opens}")
     print(f"Closes : {closes}")
     print(f"Net PnL: {sum(pnls):.2f}" if pnls else "Net PnL: n/a")
-    if pnls:
-        print(f"Wins   : {len(wins)}")
-        print(f"Losses : {len(losses)}")
-    print("This is paper evidence only. Not live results.")
+    if last_scans:
+        print("Last scans:")
+        for row in last_scans[-6:]:
+            print(
+                f"  {row.get('symbol')} score={row.get('score')} "
+                f"price={row.get('price')} {row.get('reason')}"
+            )
+    print("Paper evidence only. Live trading locked.")
 
 
 if __name__ == "__main__":
