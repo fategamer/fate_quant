@@ -8,6 +8,7 @@ on:
 jobs:
   test-and-research:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,8 +19,10 @@ jobs:
       - name: Unit tests
         run: python -m pytest tests/ -q
       - name: Research
+        timeout-minutes: 5
         run: python scripts/run_research.py
         continue-on-error: true
       - name: Walk-forward / OOS
+        timeout-minutes: 5
         run: python scripts/run_walk_forward.py
         continue-on-error: true
