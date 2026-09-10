@@ -115,6 +115,12 @@ class PaperEngine:
             f"{symbol}: score={signal.score:.1f} valid={signal.is_valid} "
             f"price={last:.4f} reason={signal.reason}"
         )
+        self.journal.write("SCAN", {
+            "symbol": symbol,
+            "price": last,
+            "score": signal.score,
+            "reason": signal.reason,
+        })
         if not signal.is_valid or signal.score < gate:
             print(f"{symbol}: NO TRADE (need score >= {gate})")
             return
