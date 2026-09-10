@@ -79,7 +79,7 @@ class PaperEngine:
         htf = self.handler.fetch_ohlcv(symbol, HIGHER_TIMEFRAME, limit=250)
         ptf = self.handler.fetch_ohlcv(symbol, PRIMARY_TIMEFRAME, limit=200)
         if not self.handler.validate_data(htf) or not self.handler.validate_data(ptf):
-            self.alerts.notify(f"DATA INVALID: {symbol}")
+            print(f"{symbol}: DATA INVALID")
             return
 
         last = float(ptf["close"].iloc[-1])
@@ -96,21 +96,32 @@ class PaperEngine:
                 self._close_position(symbol, pos.take_profit, "Take Profit 2R")
             elif hours_held >= MAX_BARS_IN_TRADE:
                 self._close_position(symbol, last, "Time Stop")
+            else:
+                print(f"{symbol}: HOLD price={last:.4f} hours={hours_held:.1f}")
             return
 
         if self.portfolio.open_count() >= MAX_OPEN_POSITIONS:
+            print(f"{symbol}: SKIP max positions already open")
             return
 
         can_trade, reason = self.risk.can_open_trade()
         if not can_trade:
+            print(f"{symbol}: SKIP risk ({reason})")
             return
 
         signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
-        if not signal.is_valid or signal.score < SCORE_GATES["valid_min"]:
+        gate = SCORE_GATES["valid_min"]
+        print(
+            f"{symbol}: score={signal.score:.1f} valid={signal.is_valid} "
+            f"price={last:.4f} reason={signal.reason}"
+        )
+        if not signal.is_valid or signal.score < gate:
+            print(f"{symbol}: NO TRADE (need score >= {gate})")
             return
 
         size = self.risk.calculate_position_size(signal.entry_price, signal.stop_price)
         if size.rejected or size.quantity <= 0:
+            print(f"{symbol}: SKIP size rejected ({size.reason})")
             return
 
         take_profit = signal.entry_price + abs(signal.entry_price - signal.stop_price) * 2.0
@@ -145,6 +156,7 @@ class PaperEngine:
                 self.scan_symbol(symbol)
             except Exception as e:
                 self.alerts.notify(f"ERROR {symbol}: {e}")
+                print(f"{symbol}: ERROR {e}")
         equity = self._refresh_equity()
         return {
             "equity": equity,
