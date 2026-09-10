@@ -15,17 +15,14 @@ def main():
         print("No paper journal yet.")
         return
 
-    scans = opens = closes = 0
+    opens = closes = scans = 0
     pnls = []
     last_scans = []
     with open(PATH, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             ev = row.get("event")
-            if ev == "SCAN":
-                scans += 1
-                last_scans.append(row)
-            elif ev == "OPEN":
+            if ev == "OPEN":
                 opens += 1
             elif ev == "CLOSE":
                 closes += 1
@@ -33,18 +30,18 @@ def main():
                     pnls.append(float(row.get("pnl") or 0))
                 except ValueError:
                     pass
+            elif ev == "SCAN":
+                scans += 1
+                last_scans.append(row)
 
     print(f"Scans  : {scans}")
     print(f"Opens  : {opens}")
     print(f"Closes : {closes}")
     print(f"Net PnL: {sum(pnls):.2f}" if pnls else "Net PnL: n/a")
     if last_scans:
-        print("Last scans:")
+        print("Last scan lines:")
         for row in last_scans[-6:]:
-            print(
-                f"  {row.get('symbol')} score={row.get('score')} "
-                f"price={row.get('price')} {row.get('reason')}"
-            )
+            print(f"  {row.get('symbol')} score={row.get('score')} {row.get('reason')}")
     print("Paper evidence only. Live trading locked.")
 
 
