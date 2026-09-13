@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*$py.class
 *.so
 .Python
 build/
@@ -29,7 +30,6 @@ ENV/
 
 # IDE
 .idea/
-.vscode/
 *.swp
 *.swo
 
