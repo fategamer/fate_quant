@@ -6,7 +6,7 @@ Fetch + validate OHLCV. Tries ccxt, then public REST fallbacks.
 from typing import Optional
 import pandas as pd
 import requests
-from config.settings import ALLOWED_SYMBOLS
+from config.settings import ALLOWED_SYMBOLS, MONITOR_SYMBOLS
 
 INTERVAL_MAP = {
     "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d",
@@ -16,6 +16,8 @@ REST_BASES = [
     "https://data-api.binance.vision",
     "https://api.binance.com",
 ]
+
+SYMBOL_INFO_PATH = "/api/v3/exchangeInfo"
 
 
 class DataHandler:
@@ -34,6 +36,35 @@ class DataHandler:
 
     def _symbol_to_pair(self, symbol: str) -> str:
         return symbol.replace("/", "")
+
+    def validate_symbols(self, symbols=None) -> dict[str, dict]:
+        """Return current Binance SPOT availability for each requested symbol."""
+        requested = list(symbols or [*ALLOWED_SYMBOLS, *MONITOR_SYMBOLS])
+        requested_pairs = {self._symbol_to_pair(symbol): symbol for symbol in requested}
+        last_error = None
+
+        for base in REST_BASES:
+            try:
+                resp = requests.get(f"{base}{SYMBOL_INFO_PATH}", timeout=20)
+                resp.raise_for_status()
+                payload = resp.json()
+                result = {}
+                for pair, symbol in requested_pairs.items():
+                    info = next((item for item in payload.get("symbols", []) if item.get("symbol") == pair), None)
+                    result[symbol] = {
+                        "available": bool(
+                            info
+                            and info.get("status") == "TRADING"
+                            and info.get("isSpotTradingAllowed", False)
+                        ),
+                        "status": info.get("status") if info else "NOT_FOUND",
+                        "spot_trading_allowed": bool(info and info.get("isSpotTradingAllowed", False)),
+                    }
+                return result
+            except Exception as exc:
+                last_error = str(exc)
+
+        raise RuntimeError(f"Could not validate Binance symbols. Last error: {last_error}")
 
     def _from_klines(self, raw) -> pd.DataFrame:
         df = pd.DataFrame(raw, columns=[
@@ -80,8 +111,8 @@ class DataHandler:
         limit: int = 500,
         since: Optional[int] = None,
     ) -> pd.DataFrame:
-        if symbol not in ALLOWED_SYMBOLS:
-            raise ValueError(f"{symbol} not in allowed universe")
+        if symbol not in (*ALLOWED_SYMBOLS, *MONITOR_SYMBOLS):
+            raise ValueError(f"{symbol} not in monitored universe")
 
         try:
             exchange = self._get_exchange()
