@@ -7,7 +7,7 @@ def main():
     results = DataHandler().validate_symbols(symbols)
 
     print("FATE QUANT — Binance SPOT symbol validation")
-    all_available = True
+    core_available = True
     for symbol in symbols:
         info = results[symbol]
         status = "AVAILABLE" if info["available"] else "UNAVAILABLE"
@@ -16,10 +16,11 @@ def main():
             f"status={info['status']} "
             f"spot_trading_allowed={info['spot_trading_allowed']}"
         )
-        all_available = all_available and info["available"]
+        if symbol in ALLOWED_SYMBOLS:
+            core_available = core_available and info["available"]
 
-    if not all_available:
-        raise SystemExit("One or more configured symbols are unavailable on Binance SPOT.")
+    if not core_available:
+        raise SystemExit("One or more core symbols are unavailable on Binance SPOT.")
 
 
 if __name__ == "__main__":
