@@ -18,6 +18,8 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: pip install -r requirements.txt
+      - name: Validate Binance symbols
+        run: python scripts/validate_symbols.py
       - name: Paper scan
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
