@@ -18,7 +18,33 @@ INITIAL_LIVE_CAPITAL_KES = TOTAL_CAPITAL_KES * INITIAL_LIVE_ALLOCATION_PCT
 
 EXCHANGE = "binance"
 MARKET_TYPE = "spot"
-ALLOWED_SYMBOLS = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+# Core universe: scanned for trading signals.
+CORE_SYMBOLS = [
+    "BTC/USDT",
+    "ETH/USDT",
+    "BNB/USDT",
+    "XRP/USDT",
+    "SOL/USDT",
+    "TRX/USDT",
+    "ZEC/USDT",
+    "DOGE/USDT",
+    "LINK/USDT",
+    "ADA/USDT",
+]
+
+# Monitor universe: scanned for opportunities but not eligible for execution
+# unless explicitly promoted into CORE_SYMBOLS after validation.
+MONITOR_SYMBOLS = [
+    "XLM/USDT",
+    "UNI/USDT",
+    "NEAR/USDT",
+    "AVAX/USDT",
+    "SUI/USDT",
+]
+
+# Backward-compatible aggregate universe for existing modules.
+ALLOWED_SYMBOLS = CORE_SYMBOLS
 
 ALLOW_LEVERAGE = False
 ALLOW_MARTINGALE = False
