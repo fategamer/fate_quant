@@ -11,6 +11,7 @@ from config.settings import (
     TOTAL_CAPITAL_KES,
     INITIAL_LIVE_ALLOCATION_PCT,
     ALLOWED_SYMBOLS,
+    MONITOR_SYMBOLS,
     PRIMARY_TIMEFRAME,
     HIGHER_TIMEFRAME,
     ALLOW_LIVE_TRADING,
@@ -69,7 +70,7 @@ class PaperEngine:
             if price:
                 self._close_position(symbol, price, reason)
 
-    def scan_symbol(self, symbol: str):
+    def scan_symbol(self, symbol: str, eligible_for_trade: bool = True):
         self.session.roll()
         if self.risk.check_kill_switch():
             self.alerts.notify(f"KILL SWITCH: {self.risk.lock_reason}")
@@ -80,6 +81,9 @@ class PaperEngine:
         ptf = self.handler.fetch_ohlcv(symbol, PRIMARY_TIMEFRAME, limit=200)
         if not self.handler.validate_data(htf) or not self.handler.validate_data(ptf):
             print(f"{symbol}: DATA INVALID")
+            self.journal.write("SCAN", {
+                "symbol": symbol, "price": "", "score": "", "reason": "DATA INVALID",
+            })
             return
 
         last = float(ptf["close"].iloc[-1])
@@ -87,7 +91,8 @@ class PaperEngine:
         low = float(ptf["low"].iloc[-1])
         self.last_prices[symbol] = last
 
-        if self.portfolio.has_position(symbol):
+        # Monitor-only assets are evaluated but cannot open positions.
+        if eligible_for_trade and self.portfolio.has_position(symbol):
             pos = self.portfolio.positions[symbol]
             hours_held = (datetime.now(timezone.utc) - pos.entry_time).total_seconds() / 3600
             if low <= pos.stop_price:
@@ -100,6 +105,24 @@ class PaperEngine:
                 print(f"{symbol}: HOLD price={last:.4f} hours={hours_held:.1f}")
             return
 
+        signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
+        gate = SCORE_GATES["valid_min"]
+        decision = "MONITOR" if not eligible_for_trade else "NO TRADE"
+        print(
+            f"{symbol}: score={signal.score:.1f} valid={signal.is_valid} "
+            f"price={last:.4f} decision={decision} reason={signal.reason}"
+        )
+        self.journal.write("SCAN", {
+            "symbol": symbol,
+            "price": last,
+            "score": signal.score,
+            "reason": signal.reason,
+            "decision": decision if not signal.is_valid or signal.score < gate else "VALID_NOT_EXECUTED",
+        })
+
+        if not eligible_for_trade:
+            return
+
         if self.portfolio.open_count() >= MAX_OPEN_POSITIONS:
             print(f"{symbol}: SKIP max positions already open")
             return
@@ -109,18 +132,6 @@ class PaperEngine:
             print(f"{symbol}: SKIP risk ({reason})")
             return
 
-        signal = TrendMomentumBreakout(htf, ptf).generate_signal(symbol)
-        gate = SCORE_GATES["valid_min"]
-        print(
-            f"{symbol}: score={signal.score:.1f} valid={signal.is_valid} "
-            f"price={last:.4f} reason={signal.reason}"
-        )
-        self.journal.write("SCAN", {
-            "symbol": symbol,
-            "price": last,
-            "score": signal.score,
-            "reason": signal.reason,
-        })
         if not signal.is_valid or signal.score < gate:
             print(f"{symbol}: NO TRADE (need score >= {gate})")
             return
@@ -159,10 +170,18 @@ class PaperEngine:
         logger.info("Paper scan starting")
         for symbol in ALLOWED_SYMBOLS:
             try:
-                self.scan_symbol(symbol)
+                self.scan_symbol(symbol, eligible_for_trade=True)
             except Exception as e:
                 self.alerts.notify(f"ERROR {symbol}: {e}")
                 print(f"{symbol}: ERROR {e}")
+
+        for symbol in MONITOR_SYMBOLS:
+            try:
+                self.scan_symbol(symbol, eligible_for_trade=False)
+            except Exception as e:
+                self.alerts.notify(f"ERROR {symbol}: {e}")
+                print(f"{symbol}: ERROR {e}")
+
         equity = self._refresh_equity()
         return {
             "equity": equity,
@@ -172,3 +191,7 @@ class PaperEngine:
             "locked": self.risk.is_locked,
             "lock_reason": self.risk.lock_reason,
         }
+
+
+if __name__ == "__main__":
+    pass
