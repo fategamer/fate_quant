@@ -37,3 +37,6 @@ python scripts/test_telegram.py
 ```
 
 If those vars are missing, the system still runs and only logs alerts.
+
+---
+**This project is independent from real-forge.**

@@ -1,19 +1,18 @@
 # FATE QUANT V1.0
 
-**Project Type:** Risk-first Crypto Spot Trading System (Python)
+**Independent project** — Risk-first crypto spot trading system
 
-**GitHub:** https://github.com/fategamer/fate_quant  
-**Vercel Project Name:** fate_quant  
-**Universe:** BTC/USDT, ETH/USDT, SOL/USDT
-
-This project is completely independent from real-forge.
-
-## How to keep it separate on Vercel
-1. Go to the fate_quant project on Vercel → Settings → Git
-2. Make sure it is connected to: fategamer/fate_quant
-3. If it is linked to the wrong repo, Disconnect → Connect the correct one
-4. Redeploy
+- GitHub: https://github.com/fategamer/fate_quant
+- Vercel project name should be: `fate_quant`
+- Must be connected only to this repository
 
 ## Important
-This is primarily a trading / research system, not a traditional web app.
-Use the scripts/ folder for paper trading, research, and testnet.
+This is a trading / research system (Python scripts), not a public web app.
+Do not expect a normal website here. Use the `scripts/` folder for paper trading, research, walk-forward, and testnet.
+
+## Commands
+```bash
+pip install -r requirements.txt
+python -m pytest tests/ -q
+python scripts/run_paper.py
+```
